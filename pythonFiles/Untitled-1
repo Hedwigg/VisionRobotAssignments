@@ -1,0 +1,53 @@
+import tkinter as tk
+import maestro                                                     
+
+MOTORS = 1
+TURN = 2
+BODY = 0
+HEADTILT = 4
+HEADTURN = 3
+
+class KeyControl():
+    def __init__(self,win):
+        self.root = win
+        self.tango = maestro.Controller()
+        self.body = 6000
+        self.headTurn = 6000
+        self.headTilt = 6000
+        self.motors = 6000
+        self.turn = 6000
+        
+    def head(self,key):
+        print(key.keycode)
+        if key.keycode == 38:
+            self.headTurn += 200
+            if(self.headTurn > 7900):
+                self.headTurn = 7900
+            self.tango.setTarget(HEADTURN, self.headTurn)
+        elif key.keycode == 40:
+            self.headTurn -= 200
+            if(self.headTurn < 1510):
+                self.headTurn = 1510
+            self.tango.setTarget(HEADTURN, self.headTurn)
+        elif key.keycode == 25:
+            self.headTilt += 200
+            if(self.headTilt > 7900):
+                self.headTilt = 7900
+            self.tango.setTarget(HEADTILT, self.headTilt)
+        elif key.keycode == 39:
+            self.headTilt -= 200
+            if(self.headTilt < 1510):
+                self.headTilt = 1510
+            self.tango.setTarget(HEADTILT, self.headTilt)
+   
+
+
+win = tk.Tk()
+keys = KeyControl(win)
+win.bind('<w>', keys.head)
+win.bind('<s>', keys.head)
+win.bind('<a>', keys.head)
+win.bind('<d>', keys.head)
+
+win.mainloop()
+keys = KeyControl(win)
