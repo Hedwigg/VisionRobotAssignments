@@ -180,6 +180,7 @@ class KeyControl():
                     self.motors = 6000
                     self.turn = 6000
                     #re-center head
+
                     self.headTilt = 6000
                     self.headTurn = 6000
 
@@ -204,5 +205,6 @@ win.bind('<p>', keys.program)
 win.bind('<o>', keys.program)
 win.mainloop()
 keys = KeyControl(win)
+
 
 

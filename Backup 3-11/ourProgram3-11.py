@@ -75,22 +75,30 @@ class KeyControl():
             previousState = 0 # holding state to avoid overloading motor controllers (see motor logic below)
 
             for frame in camera.capture_continuous(rawCapture, format="bgr", use_video_port=True):
-
-
                 key = cv2.waitKey(1) & 0xFF 
-
-                image = frame.array
-                lower = numpy.uint8([110, 240, 250]) #110 240 250
-                upper = numpy.uint8([255, 255, 255]) # 255 255 255
-                image = cv2.inRange(image, lower, upper)
-
-                normalized = cv2.normalize(image, None, alpha=100, beta=200, norm_type=cv2.NORM_MINMAX) #alpha and beta values to adjust
                 
-                canny = cv2.Canny(normalized, 100, 170)
+                image = frame.array
 
                 #crop image to focus on whats right in front of the robot's wheels 
                 height, width = image.shape
                 cropped = canny[cropAmount:height, 0:width]
+
+                #color mask
+                lower = numpy.uint8([110, 240, 250]) #110 240 250
+                upper = numpy.uint8([255, 255, 255]) #255 255 255
+                image = cv2.inRange(image, lower, upper)
+
+                #normalize
+                normalized = cv2.normalize(image, None, alpha=0, beta=255, norm_type=cv2.NORM_MINMAX) #alpha and beta values to adjust
+
+                #grayscale
+                gray = cv2.cvtColor(normalized, cv2.COLOR_BGR2GRAY)
+                #blur
+                blur = cv2.GaussianBlur(gray, (5,5), 0)
+                #canny edges
+                canny = cv2.Canny(blur, 100, 170)
+
+                
 
                 # show the frames for DEBUGGING
                 cv2.imshow("Frame", cropped)
