@@ -1,5 +1,11 @@
 #ssh -x pi@<ip>
 #DISPLAY=:0 python3 <programname>
+
+
+# Joel Lechman, Taylor Koth
+# Robot line following 
+# 3-15
+
 from picamera import PiCamera
 from time import sleep
 import tkinter as tk
@@ -73,8 +79,15 @@ class KeyControl():
 
         elif key.keycode == 32: #start program key 'o'
             previousState = 0 # holding state to avoid overloading motor controllers (see motor logic below)
+            endCount = 0 #counter for program end
 
             for frame in camera.capture_continuous(rawCapture, format="bgr", use_video_port=True):
+                if(endCount >100):
+                    self.motors = 6000
+                    self.turn = 6000
+                    self.tango.setTarget(TURN, self.turn)
+                    self.tango.setTarget(MOTORS, self.motors) 
+                    exit()
                 key = cv2.waitKey(1) & 0xFF 
                 
                 image = frame.array
@@ -125,6 +138,7 @@ class KeyControl():
                     print("divide by 0 error - no white")
                     cogH = 0
                     cogW = 0
+                    endCount += 1
 
                 #base motor control on COG's 
                 middleBuffer = 30 #"stright"  (half of total zone)
@@ -151,7 +165,7 @@ class KeyControl():
                         self.tango.setTarget(TURN, self.turn)
                         self.tango.setTarget(MOTORS, self.motors) 
                         print("right")
-                        self.turn = 5200
+                        self.turn = 5300
                         self.tango.setTarget(TURN, self.turn)
                         self.tango.setTarget(MOTORS, self.motors) 
                         previousState = 3
@@ -163,7 +177,7 @@ class KeyControl():
                         self.tango.setTarget(TURN, self.turn)
                         self.tango.setTarget(MOTORS, self.motors) 
                         print("left")
-                        self.turn = 6800
+                        self.turn = 6700
                         self.tango.setTarget(TURN, self.turn)
                         self.tango.setTarget(MOTORS, self.motors) 
                         previousState = 1
