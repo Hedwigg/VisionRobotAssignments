@@ -95,6 +95,7 @@ class KeyControl():
             self.turn = 6000
             self.tango.setTarget(MOTORS, self.motors)
             self.tango.setTarget(TURN, self.turn)
+            exit()
 
 win = tk.Tk()
 keys = KeyControl(win)

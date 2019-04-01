@@ -13,13 +13,27 @@ import maestro
 import cv2             
 from picamera.array import PiRGBArray           
 import time     
-import numpy     
+import numpy  
 
 
 
 globalVar = ""
 
 class ClientSocket(threading.Thread):
+    MOTORS = 1
+    TURN = 2
+    BODY = 0
+    HEADTILT = 4
+    HEADTURN = 3
+    maxRight = 1510 
+    maxLeft = 7900
+    currentScanDirection = 0 #start off scanning left
+    currentHeadTurn = 6000 #initially centered
+    currentHeadTilt = 6000
+    previousState = 0
+
+    state = 0 #intial state is 0 for finding a face, state 1 is navigating to the approperate distance, state 2 is when the wheels no longer need to move but the head needs to move
+
     def __init__(self, IP, PORT):
         super(ClientSocket, self).__init__()
         self.s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -65,59 +79,147 @@ class ClientSocket(threading.Thread):
     def setup(self):
         self.tango = maestro.Controller()
         self.body = 6000
-        self.headTurn = 3968
+        self.headTurn = 6000
         self.headTilt = 6000
         self.motors = 6000
         self.turn = 6000
-        self.tango.setTarget(TURN, self.turn)
-        self.tango.setTarget(MOTORS, self.motors) 
-        self.tango.setTarget(HEADTILT, self.headTilt)
-        self.tango.setTarget(BODY, self.body)
-        self.tango.setTarget(HEADTURN, self.headTurn)
+        self.tango.setTarget(self.TURN, self.turn)
+        self.tango.setTarget(self.MOTORS, self.motors) 
+        self.tango.setTarget(self.HEADTILT, self.headTilt)
+        self.tango.setTarget(self.BODY, self.body)
+        self.tango.setTarget(self.HEADTURN, self.headTurn)
     
     def getHeadTurnPos(self):
         return self.tango.getPosition(HEADTURN)
         ##7900 is left, 3968 is right
 
+
+    def resetMotors(self):
+        #re-center body and turn off motors
+        self.motors = 6000
+        self.turn = 6000
+        #re-center head
+        self.headTilt = 6000
+        self.headTurn = 6000
+
+        self.tango.setTarget(self.MOTORS, self.motors)
+        self.tango.setTarget(self.HEADTURN, self.headTurn)
+        self.tango.setTarget(self.HEADTILT, self.headTilt)
+        self.tango.setTarget(self.TURN, self.turn)
+
+
     # 0 = left 1 = right scan has access to currentScanDirection and currentHeadTurn
-    def scan(x):
-        print(currentScanDirection , currentHeadTurn, " plus")
-        # if(currentScanDirection == 0): 
-        #     if(currentHeadTurn <= 1510):
-        #         #change directions and set global head turn value
-        #         currentHeadTurn = null #changeme
-        #     #keep turning left if not at the max.
-        #     print("scanning left")
-        
+    def scan(self):
+        if(self.currentHeadTurn <= 1510):
+            self.currentScanDirection = 0
+            self.currentHeadTurn = 1510
+            print("scan direction is now LEFT")
+
+        if(self.currentHeadTurn >= 7900): 
+            self.currentScanDirection = 1
+            self.currentHeadTurn = 7900
+            print("scan direction is now RIGHT")
+
+        if(self.currentScanDirection == 0):
+            self.currentHeadTurn = self.currentHeadTurn + 200
+
+        if(self.currentScanDirection == 1):
+            self.currentHeadTurn = self.currentHeadTurn - 200
+
+        self.headTurn = self.currentHeadTurn
+        self.tango.setTarget(self.HEADTURN, self.headTurn)
+
+
+    def movement(self,cogW,xBufferMin, xBufferMax):
+        #base motor control on COG's 
+
+        if(cogW < xBufferMax and cogW > xBufferMin):        #straight
+            if(self.previousState != 2):
+                self.motors = 6000
+                self.turn = 6000
+                self.tango.setTarget(self.TURN, self.turn)
+                self.tango.setTarget(self.MOTORS, self.motors) 
+                print("straight")
+                self.motors = 5200
+                self.tango.setTarget(self.MOTORS, self.motors)
+                previousState = 2
+
+        elif(cogW > xBufferMax):                            #right
+            if(self.previousState !=3):
+                self.motors = 6000
+                self.turn = 6000
+                self.tango.setTarget(self.TURN, self.turn)
+                self.tango.setTarget(self.MOTORS, self.motors) 
+                print("right")
+                self.turn = 5300
+                self.tango.setTarget(self.TURN, self.turn)
+                self.tango.setTarget(self.MOTORS, self.motors) 
+                previousState = 3
+
+        elif(cogW < xBufferMin):                            #left
+            if(self.previousState !=1):
+                self.motors = 6000
+                self.turn = 6000
+                self.tango.setTarget(self.TURN, self.turn)
+                self.tango.setTarget(self.MOTORS, self.motors) 
+                print("left")
+                self.turn = 6700
+                self.tango.setTarget(self.TURN, self.turn)
+                self.tango.setTarget(self.MOTORS, self.motors) 
+                previousState = 1
+        else:
+            print("stoped/error")                           #stopped
+            #print(cogW , " w")
+
+
+    def trackHead(self,cogW,cogH,bufferTop,bufferBottom,bufferLeft,bufferRight):
+        if(cogW <= bufferLeft): # left
+            self.currentHeadTurn = self.currentHeadTurn + 150
+        elif(cogW >= bufferRight): #right
+            self.currentHeadTurn = self.currentHeadTurn - 150
+        if(cogH > bufferBottom): # down
+            self.currentHeadTilt = self.currentHeadTilt - 200
+        elif(cogH < bufferTop): # up
+            self.currentHeadTilt = self.currentHeadTilt + 200
+        self.tango.setTarget(self.HEADTURN, self.currentHeadTurn)
+        self.tango.setTarget(self.HEADTILT, self.currentHeadTilt)
+
 
         
 
-IP = '10.200.4.71'
+        
+
+IP = '10.200.37.222'
 PORT = 5010
 client = ClientSocket(IP, PORT)
-##client.start()
-
-#example send text to voice
-# for i in ["start"]:
-#     time.sleep(1)
-#     client.sendData(i)            
-# print("Exiting Sends")
 
 
-MOTORS = 1
-TURN = 2
-BODY = 0
-HEADTILT = 4
-HEADTURN = 3
 camera = PiCamera()
 camera.resolution = (640, 480) #reccomended at 256x256 started at 640, 480
 camera.framerate = 32 #default =32
 rawCapture = PiRGBArray(camera, size=(640, 480))
 face_cascade= cv2.CascadeClassifier('/home/pi/opencv/data/haarcascades/haarcascade_frontalface_default.xml')
-maxRight = 1510 
-maxLeft = 7900
-currentScanDirection = 0 #start off scanning left
-currentHeadTurn = 6000
+OGHeight = 480
+OGWidth = 640
+cogW = 0
+cogH = 0
+boxWidth = 0
+comfortableDistance = 100 #max
+
+bufferLeft = 215
+bufferRight = 425
+headBufferLeft = 245
+headBufferRight = 295   #head buffer is currently 150px
+bufferTop = 160
+bufferBottom = 320
+
+##client.start()
+
+#example send text to voice
+# for i in ["start program"]:
+#     time.sleep(1)
+#     client.sendData(i)            
+# print("Exiting Sends")
 
 
 time.sleep(1) #camera warmup
@@ -129,25 +231,56 @@ for frame in camera.capture_continuous(rawCapture, format="bgr", use_video_port=
     key = cv2.waitKey(1) & 0xFF
     image = frame.array
     
-    #cv2.imshow("Image", image) #show orig capture
-
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-    faces = face_cascade.detectMultiScale(gray, 1.5, 3) #1.3 , 2 has a few false positives
+    faces = face_cascade.detectMultiScale(gray, 1.5, 2) #1.3 , 3 has fewer
     #print(faces)
 
-    
-    #if faces is empty, continue to scan for face.
-    if(faces == ()):
-        client.scan()
 
-    canvas = numpy.zeros((600,600,3,),dtype=numpy.uint8) #canvas to draw rectangles on
+    
+
+    canvas = numpy.zeros((OGHeight -1,OGWidth -1,3,),dtype=numpy.uint8) #canvas to draw rectangles on
     for (x,y,w,h) in faces:
         cv2.rectangle(canvas,(x,y),(x+w,y+h),(255,255,255),-1)
-    cv2.imshow("gray", gray)
-    #cv2.imshow("canvas", canvas)
+        cogW= (x + (w/2))
+        cogH =(y + (h/2))
+        boxWidth = w
+        #TODO if boxWidth is greater than a certain number, call a method to back straight up a bit.
+    cv2.line(canvas, (bufferLeft, 0), (bufferLeft, OGHeight), (255,255,255))
+    cv2.line(canvas, (bufferRight, 0), (bufferRight, OGHeight), (255,255,255))
+    cv2.imshow("canvas", canvas)    
+
+    if(client.state == 0): #scan to find face
+        if (faces == () and client.state == 0):
+            print(client.state) 
+            client.scan()
+        else:
+            print("moving to state 1")
+            client.state = 1 # if there is a face, move on to the next phase
+
+    elif(client.state == 1): #movement phase
+        print("movement phase")
+        print(boxWidth , " box width ")
+        #check size of box first to kick into next state
+        if(boxWidth >= comfortableDistance): #adjust size for distance to person it found
+            client.state = 2
+            client.resetMotors()
+        else:
+            if(faces != ()): #only calculate movement when there is a face recgonized
+                client.movement(cogW,bufferLeft, bufferRight)
+
+
+    elif(client.state ==2):  #head tracking phase (body is not moving)
+        print("face tracking")
+        if(faces != ()):
+            client.trackHead(cogW,cogH,bufferTop,bufferBottom,headBufferLeft,headBufferRight)
+        
+
+    else:
+        print(" phase error")
 
     # if the `q` key was pressed, break from the loop after destroying cv2 windows
     if key == ord("q"):
+        client.resetMotors()
         cv2.destroyAllWindows()
         break
     rawCapture.truncate(0)
