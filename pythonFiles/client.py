@@ -28,7 +28,7 @@ class ClientSocket(threading.Thread):
     maxLeft = 7900
     currentScanDirection = 0 #start off scanning left
     currentHeadTurn = 6000 #initially centered
-    currentHeadTilt = 6000
+    currentHeadTilt = 7000
     previousState = 0
     previousCenterBody = ""
 
@@ -80,7 +80,7 @@ class ClientSocket(threading.Thread):
         self.tango = maestro.Controller()
         self.body = 6000
         self.headTurn = 6000
-        self.headTilt = 6700
+        self.headTilt = 7000
         self.motors = 6000
         self.turn = 6000
         self.tango.setTarget(self.TURN, self.turn)
@@ -97,8 +97,10 @@ class ClientSocket(threading.Thread):
     def resetMotors(self):
         #re-center body and turn off motors
         self.motors = 6000
+        self.headTilt = 7000
         #re-center head
         self.tango.setTarget(self.MOTORS, self.motors)
+        self.tango.setTarget(self.HEADTILT, self.headTilt)
 
 
 
@@ -133,7 +135,7 @@ class ClientSocket(threading.Thread):
                 self.tango.setTarget(self.TURN, self.turn)
                 self.tango.setTarget(self.MOTORS, self.motors) 
                 print("straight")
-                self.motors = 5200
+                self.motors = 5400 #5200 on slow robot
                 self.tango.setTarget(self.MOTORS, self.motors)
                 previousState = 2
 
@@ -185,7 +187,7 @@ class ClientSocket(threading.Thread):
             self.tango.setTarget(self.HEADTURN, self.headTurn)
             if(self.previousCenterBody != "left"):
                 print("left")
-                self.turn = 6800
+                self.turn = 6900 #6800
                 self.tango.setTarget(self.TURN, self.turn)
                 self.tango.setTarget(self.MOTORS, self.motors) 
             previousCenterBody = "left"
@@ -209,11 +211,16 @@ class ClientSocket(threading.Thread):
             this.state = 1 #movement state
             return True
 
-        
+    #state for being too close        
+    def backwards(self):
+        self.motors = 6500
+        self.tango.setTarget(self.MOTORS, self.motors)
 
         
 
-IP = '10.200.11.130'
+        
+
+IP = '10.200.24.66'
 PORT = 5010
 client = ClientSocket(IP, PORT)
 
@@ -228,14 +235,17 @@ OGWidth = 640
 cogW = 330
 cogH = 240
 boxWidth = 0
-comfortableDistance = 100 #max
+comfortableDistance = 110 #100
+comfortableDistanceMax = 130
 
 bufferLeft = 215
 bufferRight = 425
 headBufferLeft = 245
 headBufferRight = 295   #head buffer is currently 150px
 bufferTop = 160
-bufferBottom = 320
+bufferBottom = 300 #320
+
+loseCount = 0
 
 ##client.start()         
 
@@ -265,9 +275,22 @@ for frame in camera.capture_continuous(rawCapture, format="bgr", use_video_port=
         #TODO if boxWidth is greater than a certain number, call a method to back straight up a bit.
     cv2.line(canvas, (bufferLeft, 0), (bufferLeft, OGHeight), (255,255,255))
     cv2.line(canvas, (bufferRight, 0), (bufferRight, OGHeight), (255,255,255))
-    cv2.imshow("canvas", canvas)    
+    cv2.imshow("canvas", canvas)  
+
+    if (faces == ()):
+        loseCount += 1
+        print(loseCount , " lost count")
+    else:
+        loseCount = 0
+    if (loseCount >= 75):
+        client.state = 0 #reset back to state 0 - scan.
+        print("lost face, resetting back to state 0")
+
+    if(boxWidth >= comfortableDistanceMax):
+        client.state = 4
 
     if(client.state == 0): #scan to find face
+        
         if (faces == () and client.state == 0):
             print(client.state) 
             client.scan()
@@ -299,6 +322,14 @@ for frame in camera.capture_continuous(rawCapture, format="bgr", use_video_port=
             client.state = 1
             client.resetMotors()
             print("moving to state 1 movement state")
+    elif(client.state == 4): #move back too close
+        if(boxWidth >= comfortableDistanceMax):
+            print("moving backwards too close")
+            client.backwards()
+        else:
+            #kick back into face tracking
+            client.resetMotors()
+            client.state = 2
 
 
     else:
