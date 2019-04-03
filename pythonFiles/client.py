@@ -5,7 +5,6 @@
 import socket, time
 import threading
 import queue
-
 from picamera import PiCamera
 from time import sleep
 import tkinter as tk
@@ -31,6 +30,7 @@ class ClientSocket(threading.Thread):
     currentHeadTurn = 6000 #initially centered
     currentHeadTilt = 6000
     previousState = 0
+    previousCenterBody = ""
 
     state = 0 #intial state is 0 for finding a face, state 1 is navigating to the approperate distance, state 2 is when the wheels no longer need to move but the head needs to move
 
@@ -80,7 +80,7 @@ class ClientSocket(threading.Thread):
         self.tango = maestro.Controller()
         self.body = 6000
         self.headTurn = 6000
-        self.headTilt = 6000
+        self.headTilt = 6700
         self.motors = 6000
         self.turn = 6000
         self.tango.setTarget(self.TURN, self.turn)
@@ -97,15 +97,9 @@ class ClientSocket(threading.Thread):
     def resetMotors(self):
         #re-center body and turn off motors
         self.motors = 6000
-        self.turn = 6000
         #re-center head
-        self.headTilt = 6000
-        self.headTurn = 6000
-
         self.tango.setTarget(self.MOTORS, self.motors)
-        self.tango.setTarget(self.HEADTURN, self.headTurn)
-        self.tango.setTarget(self.HEADTILT, self.headTilt)
-        self.tango.setTarget(self.TURN, self.turn)
+
 
 
     # 0 = left 1 = right scan has access to currentScanDirection and currentHeadTurn
@@ -132,7 +126,6 @@ class ClientSocket(threading.Thread):
 
     def movement(self,cogW,xBufferMin, xBufferMax):
         #base motor control on COG's 
-
         if(cogW < xBufferMax and cogW > xBufferMin):        #straight
             if(self.previousState != 2):
                 self.motors = 6000
@@ -151,7 +144,7 @@ class ClientSocket(threading.Thread):
                 self.tango.setTarget(self.TURN, self.turn)
                 self.tango.setTarget(self.MOTORS, self.motors) 
                 print("right")
-                self.turn = 5300
+                self.turn = 5200
                 self.tango.setTarget(self.TURN, self.turn)
                 self.tango.setTarget(self.MOTORS, self.motors) 
                 previousState = 3
@@ -163,13 +156,12 @@ class ClientSocket(threading.Thread):
                 self.tango.setTarget(self.TURN, self.turn)
                 self.tango.setTarget(self.MOTORS, self.motors) 
                 print("left")
-                self.turn = 6700
+                self.turn = 6800
                 self.tango.setTarget(self.TURN, self.turn)
                 self.tango.setTarget(self.MOTORS, self.motors) 
                 previousState = 1
         else:
             print("stoped/error")                           #stopped
-            #print(cogW , " w")
 
 
     def trackHead(self,cogW,cogH,bufferTop,bufferBottom,bufferLeft,bufferRight):
@@ -184,12 +176,44 @@ class ClientSocket(threading.Thread):
         self.tango.setTarget(self.HEADTURN, self.currentHeadTurn)
         self.tango.setTarget(self.HEADTILT, self.currentHeadTilt)
 
+    #center body on head before movement
+    def centerBody(self):
+        print(self.headTurn , " --")
+        if(self.headTurn > 6100):
+            #motor left, head right
+            self.headTurn = self.headTurn - 100
+            self.tango.setTarget(self.HEADTURN, self.headTurn)
+            if(self.previousCenterBody != "left"):
+                print("left")
+                self.turn = 6800
+                self.tango.setTarget(self.TURN, self.turn)
+                self.tango.setTarget(self.MOTORS, self.motors) 
+            previousCenterBody = "left"
+            return False
+        elif(self.headTurn < 5900):
+            #motor right, head left
+            self.headTurn = self.headTurn + 100           
+            self.tango.setTarget(self.HEADTURN, self.headTurn)
+            if(self.previousCenterBody != "right"): #right
+                print("centering right")
+                self.turn = 5200
+                self.tango.setTarget(self.TURN, self.turn)
+                self.tango.setTarget(self.MOTORS, self.motors) 
+            previousCenterBody = "right"
+            return False
+        else:
+            self.turn = 6000
+            self.motors = 6000
+            self.tango.setTarget(self.TURN, self.turn)
+            self.tango.setTarget(self.MOTORS, self.motors)
+            this.state = 1 #movement state
+            return True
 
         
 
         
 
-IP = '10.200.37.222'
+IP = '10.200.11.130'
 PORT = 5010
 client = ClientSocket(IP, PORT)
 
@@ -201,8 +225,8 @@ rawCapture = PiRGBArray(camera, size=(640, 480))
 face_cascade= cv2.CascadeClassifier('/home/pi/opencv/data/haarcascades/haarcascade_frontalface_default.xml')
 OGHeight = 480
 OGWidth = 640
-cogW = 0
-cogH = 0
+cogW = 330
+cogH = 240
 boxWidth = 0
 comfortableDistance = 100 #max
 
@@ -213,13 +237,7 @@ headBufferRight = 295   #head buffer is currently 150px
 bufferTop = 160
 bufferBottom = 320
 
-##client.start()
-
-#example send text to voice
-# for i in ["start program"]:
-#     time.sleep(1)
-#     client.sendData(i)            
-# print("Exiting Sends")
+##client.start()         
 
 
 time.sleep(1) #camera warmup
@@ -254,14 +272,13 @@ for frame in camera.capture_continuous(rawCapture, format="bgr", use_video_port=
             print(client.state) 
             client.scan()
         else:
-            print("moving to state 1")
-            client.state = 1 # if there is a face, move on to the next phase
+            print("moving to state 3")
+            client.state = 3 # if there is a face, move on to the next phase
+            client.sendData("Hello Human")
 
     elif(client.state == 1): #movement phase
-        print("movement phase")
-        print(boxWidth , " box width ")
         #check size of box first to kick into next state
-        if(boxWidth >= comfortableDistance): #adjust size for distance to person it found
+        if(boxWidth >= comfortableDistance): #if within the comfortable distance
             client.state = 2
             client.resetMotors()
         else:
@@ -274,6 +291,15 @@ for frame in camera.capture_continuous(rawCapture, format="bgr", use_video_port=
         if(faces != ()):
             client.trackHead(cogW,cogH,bufferTop,bufferBottom,headBufferLeft,headBufferRight)
         
+    elif(client.state == 3): #center body on found face
+        if(client.headTurn < 5900 or client.headTurn > 6100):
+            print("centering BOdy")
+            client.centerBody()
+        else:
+            client.state = 1
+            client.resetMotors()
+            print("moving to state 1 movement state")
+
 
     else:
         print(" phase error")
