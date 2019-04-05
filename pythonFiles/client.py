@@ -2,6 +2,10 @@
 #DISPLAY=:0 python3 client.py
 #
 
+## Joel Lechman
+## Taylor Koth
+## Robot Vision assignment 5
+
 import socket, time
 import threading
 import queue
@@ -220,7 +224,7 @@ class ClientSocket(threading.Thread):
 
         
 
-IP = '10.200.24.66'
+IP = '10.200.61.142'
 PORT = 5010
 client = ClientSocket(IP, PORT)
 
