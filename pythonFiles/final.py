@@ -1,6 +1,9 @@
-#ssh -x pi@<ip>
-#DISPLAY=:0 python3 client.py
-#
+## Joel Lechman
+## Taylor Koth
+## Robot Vision - Final Project
+
+
+#DISPLAY=:0 python3 final.py
 
 import socket, time
 import threading
@@ -16,7 +19,6 @@ import numpy
 
 
 
-globalVar = ""
 
 class ClientSocket(threading.Thread):
     MOTORS = 1
@@ -28,7 +30,7 @@ class ClientSocket(threading.Thread):
     maxLeft = 7900
     currentScanDirection = 0 #start off scanning left
     currentHeadTurn = 6000 #initially centered
-    currentHeadTilt = 7000
+    currentHeadTilt = 500
     previousState = 0
     previousCenterBody = ""
 
@@ -80,7 +82,7 @@ class ClientSocket(threading.Thread):
         self.tango = maestro.Controller()
         self.body = 6000
         self.headTurn = 6000
-        self.headTilt = 7000
+        self.headTilt = 5000
         self.motors = 6000
         self.turn = 6000
         self.tango.setTarget(self.TURN, self.turn)
@@ -88,16 +90,12 @@ class ClientSocket(threading.Thread):
         self.tango.setTarget(self.HEADTILT, self.headTilt)
         self.tango.setTarget(self.BODY, self.body)
         self.tango.setTarget(self.HEADTURN, self.headTurn)
-    
-    def getHeadTurnPos(self):
-        return self.tango.getPosition(HEADTURN)
-        ##7900 is left, 3968 is right
 
 
     def resetMotors(self):
         #re-center body and turn off motors
         self.motors = 6000
-        self.headTilt = 7000
+        self.headTilt = 5000
         #re-center head
         self.tango.setTarget(self.MOTORS, self.motors)
         self.tango.setTarget(self.HEADTILT, self.headTilt)
@@ -126,59 +124,7 @@ class ClientSocket(threading.Thread):
         self.tango.setTarget(self.HEADTURN, self.headTurn)
 
 
-    def movement(self,cogW,xBufferMin, xBufferMax):
-        #base motor control on COG's 
-        if(cogW < xBufferMax and cogW > xBufferMin):        #straight
-            if(self.previousState != 2):
-                self.motors = 6000
-                self.turn = 6000
-                self.tango.setTarget(self.TURN, self.turn)
-                self.tango.setTarget(self.MOTORS, self.motors) 
-                print("straight")
-                self.motors = 5400 #5200 on slow robot
-                self.tango.setTarget(self.MOTORS, self.motors)
-                previousState = 2
-
-        elif(cogW > xBufferMax):                            #right
-            if(self.previousState !=3):
-                self.motors = 6000
-                self.turn = 6000
-                self.tango.setTarget(self.TURN, self.turn)
-                self.tango.setTarget(self.MOTORS, self.motors) 
-                print("right")
-                self.turn = 5200
-                self.tango.setTarget(self.TURN, self.turn)
-                self.tango.setTarget(self.MOTORS, self.motors) 
-                previousState = 3
-
-        elif(cogW < xBufferMin):                            #left
-            if(self.previousState !=1):
-                self.motors = 6000
-                self.turn = 6000
-                self.tango.setTarget(self.TURN, self.turn)
-                self.tango.setTarget(self.MOTORS, self.motors) 
-                print("left")
-                self.turn = 6800
-                self.tango.setTarget(self.TURN, self.turn)
-                self.tango.setTarget(self.MOTORS, self.motors) 
-                previousState = 1
-        else:
-            print("stoped/error")                           #stopped
-
-
-    def trackHead(self,cogW,cogH,bufferTop,bufferBottom,bufferLeft,bufferRight):
-        if(cogW <= bufferLeft): # left
-            self.currentHeadTurn = self.currentHeadTurn + 150
-        elif(cogW >= bufferRight): #right
-            self.currentHeadTurn = self.currentHeadTurn - 150
-        if(cogH > bufferBottom): # down
-            self.currentHeadTilt = self.currentHeadTilt - 200
-        elif(cogH < bufferTop): # up
-            self.currentHeadTilt = self.currentHeadTilt + 200
-        self.tango.setTarget(self.HEADTURN, self.currentHeadTurn)
-        self.tango.setTarget(self.HEADTILT, self.currentHeadTilt)
-
-    #center body on head before movement
+    #center body on head
     def centerBody(self):
         print(self.headTurn , " --")
         if(self.headTurn > 6100):
@@ -215,15 +161,18 @@ class ClientSocket(threading.Thread):
     def backwards(self):
         self.motors = 6500
         self.tango.setTarget(self.MOTORS, self.motors)
+    # onclick event function for hsv window
+    def onClick(self,event, x, y, flags, param):
+        if event == cv2.EVENT_LBUTTONDOWN:
+            # print out color values for current click x,y coords (to help figure out color thresholds)
+            print(hsv[y, x])  
 
-        
+print("program start")
+globalVar = ""
 
-        
-
-IP = '10.200.61.142'
+IP = '10.200.27.7'
 PORT = 5010
 client = ClientSocket(IP, PORT)
-
 
 camera = PiCamera()
 camera.resolution = (640, 480) #reccomended at 256x256 started at 640, 480
@@ -244,94 +193,64 @@ headBufferLeft = 245
 headBufferRight = 295   #head buffer is currently 150px
 bufferTop = 160
 bufferBottom = 300 #320
+loseCount = 0  
 
-loseCount = 0
+#filters for the colored lines
+blueFilterMin = numpy.array([90,20,110]) 
+blueFilterMax = numpy.array([145,48,255]) 
+
+#orange values are good
+orangeFilterMin = numpy.array([5,50,120]) 
+orangeFilterMax = numpy.array([25,110,255]) 
+
+
+# main program
 
 ##client.start()         
-
-
 time.sleep(1) #camera warmup
-
-
 client.setup() #align head and body.
 
 for frame in camera.capture_continuous(rawCapture, format="bgr", use_video_port=True):
     key = cv2.waitKey(1) & 0xFF
     image = frame.array
-    
-    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-    faces = face_cascade.detectMultiScale(gray, 1.5, 2) #1.3 , 3 has fewer
-    #print(faces)
-
+    #cv2.imshow("og", image)
 
     
 
-    canvas = numpy.zeros((OGHeight -1,OGWidth -1,3,),dtype=numpy.uint8) #canvas to draw rectangles on
-    for (x,y,w,h) in faces:
-        cv2.rectangle(canvas,(x,y),(x+w,y+h),(255,255,255),-1)
-        cogW= (x + (w/2))
-        cogH =(y + (h/2))
-        boxWidth = w
-        #TODO if boxWidth is greater than a certain number, call a method to back straight up a bit.
-    cv2.line(canvas, (bufferLeft, 0), (bufferLeft, OGHeight), (255,255,255))
-    cv2.line(canvas, (bufferRight, 0), (bufferRight, OGHeight), (255,255,255))
-    cv2.imshow("canvas", canvas)  
-
-    if (faces == ()):
-        loseCount += 1
-        print(loseCount , " lost count")
-    else:
-        loseCount = 0
-    if (loseCount >= 75):
-        client.state = 0 #reset back to state 0 - scan.
-        print("lost face, resetting back to state 0")
-
-    if(boxWidth >= comfortableDistanceMax):
-        client.state = 4
-
-    if(client.state == 0): #scan to find face
-        
-        if (faces == () and client.state == 0):
-            print(client.state) 
-            client.scan()
-        else:
-            print("moving to state 3")
-            client.state = 3 # if there is a face, move on to the next phase
-            client.sendData("Hello Human")
-
-    elif(client.state == 1): #movement phase
-        #check size of box first to kick into next state
-        if(boxWidth >= comfortableDistance): #if within the comfortable distance
-            client.state = 2
-            client.resetMotors()
-        else:
-            if(faces != ()): #only calculate movement when there is a face recgonized
-                client.movement(cogW,bufferLeft, bufferRight)
+    if(client.state == 0): #scan for blue line
+        image = cv2.GaussianBlur(image, (5, 5), 0)
+        hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV) 
+        cv2.imshow("hsv", hsv)
+        mask = cv2.inRange(hsv, blueFilterMin, blueFilterMax)
+        #erode and dialate to reduce white noise
+        kernel = numpy.ones((5, 5), numpy.uint8)
+        #erode
+        mask = cv2.erode(mask,kernel,iterations = 1)
+        #dialate
+        mask = cv2.dilate(mask,kernel,iterations = 3)
+        cv2.setMouseCallback('hsv', client.onClick)
+        cv2.imshow("blue mask", mask)
 
 
-    elif(client.state ==2):  #head tracking phase (body is not moving)
-        print("face tracking")
-        if(faces != ()):
-            client.trackHead(cogW,cogH,bufferTop,bufferBottom,headBufferLeft,headBufferRight)
-        
-    elif(client.state == 3): #center body on found face
-        if(client.headTurn < 5900 or client.headTurn > 6100):
-            print("centering BOdy")
-            client.centerBody()
-        else:
-            client.state = 1
-            client.resetMotors()
-            print("moving to state 1 movement state")
-    elif(client.state == 4): #move back too close
-        if(boxWidth >= comfortableDistanceMax):
-            print("moving backwards too close")
-            client.backwards()
-        else:
-            #kick back into face tracking
-            client.resetMotors()
-            client.state = 2
+    elif(client.state == 1): #approach the blue line
+        print("approaching blue line")
+    elif(client.state ==2): #finding human
+        print("finding human")
+    elif(client.state ==3): #grabbing ice?
+        print("grabbing ice")
+    elif(client.state ==4): #find orange line
+        hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV) 
+        cv2.imshow("hsv", hsv)
+        cv2.setMouseCallback('hsv', client.onClick)
+        maskO = cv2.inRange(hsv, orangeFilterMin, orangeFilterMax)
+        cv2.imshow("orange mask", maskO)
 
-
+    elif(client.state ==5):
+        print("approaching orange line")
+    elif(client.state ==6):
+        print("depositing in goal")
+    elif(client.state ==7):
+        print("finished")
     else:
         print(" phase error")
 
