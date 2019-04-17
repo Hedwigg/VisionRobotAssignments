@@ -287,11 +287,11 @@ waitCounter = 0
 maxWait = 60
 
 
-#filters for the colored lines
+#blue filter
 blueFilterMin = numpy.array([90,20,110]) 
 blueFilterMax = numpy.array([145,48,255]) 
 
-#orange values are good
+#orange filter
 orangeFilterMin = numpy.array([5,50,120]) 
 orangeFilterMax = numpy.array([25,110,255]) 
 
