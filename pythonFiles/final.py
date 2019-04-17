@@ -210,6 +210,46 @@ class ClientSocket(threading.Thread):
             self.turn = 7000
             self.tango.setTarget(self.TURN, self.turn)
 
+    #robot movement for approaching human
+    def movement(self,cogW,xBufferMin, xBufferMax):
+        #base motor control on COG's 
+        if(cogW < xBufferMax and cogW > xBufferMin):        #straight
+            if(self.previousState != 2):
+                self.motors = 6000
+                self.turn = 6000
+                self.tango.setTarget(self.TURN, self.turn)
+                self.tango.setTarget(self.MOTORS, self.motors) 
+                print("straight")
+                self.motors = 5200 #5200 on slow robot
+                self.tango.setTarget(self.MOTORS, self.motors)
+                previousState = 2
+
+        elif(cogW > xBufferMax):                            #right
+            if(self.previousState !=3):
+                self.motors = 6000
+                self.turn = 6000
+                self.tango.setTarget(self.TURN, self.turn)
+                self.tango.setTarget(self.MOTORS, self.motors) 
+                print("right")
+                self.turn = 5200
+                self.tango.setTarget(self.TURN, self.turn)
+                self.tango.setTarget(self.MOTORS, self.motors) 
+                previousState = 3
+
+        elif(cogW < xBufferMin):                            #left
+            if(self.previousState !=1):
+                self.motors = 6000
+                self.turn = 6000
+                self.tango.setTarget(self.TURN, self.turn)
+                self.tango.setTarget(self.MOTORS, self.motors) 
+                print("left")
+                self.turn = 7000
+                self.tango.setTarget(self.TURN, self.turn)
+                self.tango.setTarget(self.MOTORS, self.motors) 
+                previousState = 1
+        else:
+            print("stoped/error")                           #stopped
+
 
 print("program start")
 globalVar = ""
@@ -228,7 +268,7 @@ OGWidth = 640
 cogW = 330
 cogH = 240
 boxWidth = 0
-comfortableDistance = 110 #100
+comfortableDistance = 120 #100
 comfortableDistanceMax = 130
 
 bufferLeft = 215
@@ -244,7 +284,7 @@ colorGoal = "yellow" #current run color *CHANGEME*
 
 #waiting variables for grabbing ice
 waitCounter = 0
-maxWait = 70
+maxWait = 60
 
 
 #filters for the colored lines
@@ -363,6 +403,22 @@ for frame in camera.capture_continuous(rawCapture, format="bgr", use_video_port=
 
     elif(client.state ==9):#moving to human with ice.
         print("moving to human")
+        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        faces = face_cascade.detectMultiScale(gray, 1.5, 2) #1.3 , 3 has fewer
+        canvas = numpy.zeros((OGHeight -1,OGWidth -1,3,),dtype=numpy.uint8) #canvas to draw rectangles on
+        for (x,y,w,h) in faces:
+            cv2.rectangle(canvas,(x,y),(x+w,y+h),(255,255,255),-1)
+            cogW= (x + (w/2))
+            cogH =(y + (h/2))
+            boxWidth = w
+        cv2.imshow("face", canvas)
+
+        if(boxWidth >= comfortableDistance): #if within the comfortable distance
+            client.resetMotors()
+            client.state = 3
+            cv2.destroyAllWindows()
+        else:
+            client.movement(cogW,bufferLeft, bufferRight)
     else:
         print(" phase error")
 
@@ -372,3 +428,4 @@ for frame in camera.capture_continuous(rawCapture, format="bgr", use_video_port=
         cv2.destroyAllWindows()
         break
     rawCapture.truncate(0)
+rawCapture.truncate(0)
