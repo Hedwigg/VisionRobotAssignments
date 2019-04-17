@@ -26,15 +26,21 @@ class ClientSocket(threading.Thread):
     BODY = 0
     HEADTILT = 4
     HEADTURN = 3
+    SHOULDERVER = 6
+    SHOULDERHOZ = 7
+    ELBOW = 8
+    WRIST = 10
+    HAND = 11
     maxRight = 1510 
     maxLeft = 7900
     currentScanDirection = 0 #start off scanning left
     currentHeadTurn = 6000 #initially centered
     currentHeadTilt = 500
     previousState = 0
+    previousPivot = 0
     previousCenterBody = ""
 
-    state = 0 #intial state is 0 for finding a face, state 1 is navigating to the approperate distance, state 2 is when the wheels no longer need to move but the head needs to move
+    state = 2 #intial state is 0 for finding a face, state 1 is navigating to the approperate distance, state 2 is when the wheels no longer need to move but the head needs to move
 
     def __init__(self, IP, PORT):
         super(ClientSocket, self).__init__()
@@ -85,20 +91,31 @@ class ClientSocket(threading.Thread):
         self.headTilt = 5000
         self.motors = 6000
         self.turn = 6000
+        self.shoulderhoz = 6000
+        self.hand = 1000
+        self.wrist = 5200
+        self.elbow = 2000
+        self.tango.setTarget(self.ELBOW, self.elbow)
+        self.tango.setTarget(self.WRIST, self.wrist)
+        self.tango.setTarget(self.HAND, self.hand)
         self.tango.setTarget(self.TURN, self.turn)
+        self.tango.setTarget(self.SHOULDERHOZ, self.shoulderhoz)
         self.tango.setTarget(self.MOTORS, self.motors) 
         self.tango.setTarget(self.HEADTILT, self.headTilt)
         self.tango.setTarget(self.BODY, self.body)
         self.tango.setTarget(self.HEADTURN, self.headTurn)
+        
 
 
     def resetMotors(self):
         #re-center body and turn off motors
         self.motors = 6000
-        self.headTilt = 5000
+        #self.headTilt = 5000
+        self.turn = 6000
         #re-center head
         self.tango.setTarget(self.MOTORS, self.motors)
-        self.tango.setTarget(self.HEADTILT, self.headTilt)
+        #self.tango.setTarget(self.HEADTILT, self.headTilt)
+        self.tango.setTarget(self.TURN, self.turn)
 
 
 
@@ -167,10 +184,37 @@ class ClientSocket(threading.Thread):
             # print out color values for current click x,y coords (to help figure out color thresholds)
             print(hsv[y, x])  
 
+    def closeHand(self):
+        print("closing hand")
+        self.hand = 7500
+        self.tango.setTarget(self.HAND, self.hand)
+
+    def openHand(self):
+        print("Opening hand")
+        self.hand = 1000
+        self.tango.setTarget(self.HAND, self.hand)
+
+    # at the start of grabbing for ice.
+    def raiseElbow(self):
+        self.elbow = 7000
+        self.tango.setTarget(self.ELBOW, self.elbow)
+
+    #raise head (used for human face detection)
+    def raiseHead(self):
+        self.headTilt = 7000
+        self.tango.setTarget(self.HEADTILT, self.headTilt)
+
+    def pivotRight(self):
+        if(self.previousPivot == 0):
+            self.previousPivot =1
+            self.turn = 7000
+            self.tango.setTarget(self.TURN, self.turn)
+
+
 print("program start")
 globalVar = ""
 
-IP = '10.200.27.7'
+IP = '10.200.13.125' #phone IP
 PORT = 5010
 client = ClientSocket(IP, PORT)
 
@@ -194,6 +238,14 @@ headBufferRight = 295   #head buffer is currently 150px
 bufferTop = 160
 bufferBottom = 300 #320
 loseCount = 0  
+elbowStatus = 0 # initially straight arm
+
+colorGoal = "yellow" #current run color *CHANGEME*
+
+#waiting variables for grabbing ice
+waitCounter = 0
+maxWait = 70
+
 
 #filters for the colored lines
 blueFilterMin = numpy.array([90,20,110]) 
@@ -202,6 +254,18 @@ blueFilterMax = numpy.array([145,48,255])
 #orange values are good
 orangeFilterMin = numpy.array([5,50,120]) 
 orangeFilterMax = numpy.array([25,110,255]) 
+
+#pink filters 
+pinkFilterMin = numpy.array([150,50,230])
+pinkFilterMax = numpy.array([170,140,255])
+
+#green filters 
+greenFilterMin = numpy.array([45,140,190])
+greenFilterMax = numpy.array([55,175,255])
+
+#yellow filters 
+yellowFilterMin = numpy.array([25,105,190])
+yellowFilterMax = numpy.array([40,145,240])
 
 
 # main program
@@ -234,10 +298,46 @@ for frame in camera.capture_continuous(rawCapture, format="bgr", use_video_port=
 
     elif(client.state == 1): #approach the blue line
         print("approaching blue line")
-    elif(client.state ==2): #finding human
+    elif(client.state ==2): #finding human (scan only)
         print("finding human")
+        client.raiseHead()
+        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        faces = face_cascade.detectMultiScale(gray, 1.5, 2) #1.3 , 3 has fewer
+
+        if(faces != ()):
+            #navigate to human move to state 9
+            client.resetMotors()
+            client.state = 9
+        else:
+            #continue to pivot if no face found
+            client.pivotRight()
+
     elif(client.state ==3): #grabbing ice?
         print("grabbing ice")
+        #raise elbow if havent yet
+        if(elbowStatus == 0):
+            client.raiseElbow()
+            elbowStatus == 1
+        #get all of the masks 
+        hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
+        if(colorGoal == "yellow"):
+            mask = cv2.inRange(hsv, yellowFilterMin, yellowFilterMax)
+        elif(colorGoal =="green"):
+            mask = cv2.inRange(hsv, greenFilterMin, greenFilterMax)
+        elif(colorGoal =="pink"):
+            mask = cv2.inRange(hsv, pinkFilterMin, pinkFilterMax)
+        else:
+            print("color goal errer in state 3")
+        cv2.imshow("mask", mask)
+
+        if(numpy.sum(mask == 255) > 10):
+            print("yellow ice detected")
+            cv2.destroyAllWindows()
+            client.sendData("that is the ice I want")
+            client.state = 8
+
+
+
     elif(client.state ==4): #find orange line
         hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV) 
         cv2.imshow("hsv", hsv)
@@ -251,6 +351,18 @@ for frame in camera.capture_continuous(rawCapture, format="bgr", use_video_port=
         print("depositing in goal")
     elif(client.state ==7):
         print("finished")
+    elif(client.state ==8):
+        print("closing hand")
+        #wait 3 seconds and close hand
+        if(waitCounter >= maxWait):
+            client.closeHand()
+            client.state = 4 #find orange line next
+        else:
+            waitCounter = waitCounter + 1
+            print("Wait counter " , waitCounter)
+
+    elif(client.state ==9):#moving to human with ice.
+        print("moving to human")
     else:
         print(" phase error")
 
