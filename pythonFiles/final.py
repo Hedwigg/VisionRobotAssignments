@@ -20,6 +20,7 @@ import numpy
 
 
 
+
 class ClientSocket(threading.Thread):
     MOTORS = 1
     TURN = 2
@@ -40,7 +41,7 @@ class ClientSocket(threading.Thread):
     previousPivot = 0
     previousCenterBody = ""
 
-    state = 2 #intial state is 0 for finding a face, state 1 is navigating to the approperate distance, state 2 is when the wheels no longer need to move but the head needs to move
+    state =  6 #intial state is 0 for finding a face, state 1 is navigating to the approperate distance, state 2 is when the wheels no longer need to move but the head needs to move
 
     def __init__(self, IP, PORT):
         super(ClientSocket, self).__init__()
@@ -254,13 +255,13 @@ class ClientSocket(threading.Thread):
 print("program start")
 globalVar = ""
 
-IP = '10.200.13.125' #phone IP
+IP = '10.200.44.126' #phone IP
 PORT = 5010
 client = ClientSocket(IP, PORT)
 
 camera = PiCamera()
 camera.resolution = (640, 480) #reccomended at 256x256 started at 640, 480
-camera.framerate = 32 #default =32
+camera.framerate = 20 #default =32
 rawCapture = PiRGBArray(camera, size=(640, 480))
 face_cascade= cv2.CascadeClassifier('/home/pi/opencv/data/haarcascades/haarcascade_frontalface_default.xml')
 OGHeight = 480
@@ -273,6 +274,8 @@ comfortableDistanceMax = 130
 
 bufferLeft = 215
 bufferRight = 425
+momentBufferLeft =220
+momentBufferRight =260
 headBufferLeft = 245
 headBufferRight = 295   #head buffer is currently 150px
 bufferTop = 160
@@ -280,18 +283,18 @@ bufferBottom = 300 #320
 loseCount = 0  
 elbowStatus = 0 # initially straight arm
 
-colorGoal = "yellow" #current run color *CHANGEME*
+colorGoal = "pink" #current run color *CHANGEME*
 
 #waiting variables for grabbing ice
 waitCounter = 0
 maxWait = 60
 
 
-#blue filter
+#filters for the colored lines
 blueFilterMin = numpy.array([90,20,110]) 
 blueFilterMax = numpy.array([145,48,255]) 
 
-#orange filter
+#orange values are good
 orangeFilterMin = numpy.array([5,50,120]) 
 orangeFilterMax = numpy.array([25,110,255]) 
 
@@ -352,7 +355,7 @@ for frame in camera.capture_continuous(rawCapture, format="bgr", use_video_port=
             #continue to pivot if no face found
             client.pivotRight()
 
-    elif(client.state ==3): #grabbing ice?
+    elif(client.state ==3): #grabbing ice
         print("grabbing ice")
         #raise elbow if havent yet
         if(elbowStatus == 0):
@@ -376,8 +379,6 @@ for frame in camera.capture_continuous(rawCapture, format="bgr", use_video_port=
             client.sendData("that is the ice I want")
             client.state = 8
 
-
-
     elif(client.state ==4): #find orange line
         hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV) 
         cv2.imshow("hsv", hsv)
@@ -388,7 +389,38 @@ for frame in camera.capture_continuous(rawCapture, format="bgr", use_video_port=
     elif(client.state ==5):
         print("approaching orange line")
     elif(client.state ==6):
-        print("depositing in goal")
+        #print("scanning for the right goal")
+        hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV) 
+        #cv2.imshow("hsv", hsv)
+        if(colorGoal == "yellow"):
+            mask = cv2.inRange(hsv, yellowFilterMin, yellowFilterMax)
+        elif(colorGoal =="green"):
+            mask = cv2.inRange(hsv, greenFilterMin, greenFilterMax)
+        elif(colorGoal =="pink"):
+            mask = cv2.inRange(hsv, pinkFilterMin, pinkFilterMax)
+        else:
+            print("color goal errer in state 6")
+
+        h = OGHeight
+        w = OGWidth
+        wTotal = 0 
+        hTotal = 0
+        totalCounted = 0
+
+        contours, hierarchy = cv2.findContours(mask, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+        cv2.drawContours(mask, contours, -1, (0,255,0), 3)
+
+        cv2.circle(mask, (cogH, cogW), 5, (100, 100, 100), -1)
+        print(len(contours))
+        #find extreame contours to determine COG 
+       
+        #client.movement(cogW, bufferLeft, bufferRight)
+        
+        cv2.line(mask, (bufferLeft, 0), (bufferLeft, OGHeight), (255,255,255))
+        cv2.line(mask, (bufferRight, 0), (bufferRight, OGHeight), (255,255,255))
+        cv2.imshow("mask", mask)
+        #if the robot is stopped for long enough, pivot and drop the ice.
+
     elif(client.state ==7):
         print("finished")
     elif(client.state ==8):
@@ -402,7 +434,7 @@ for frame in camera.capture_continuous(rawCapture, format="bgr", use_video_port=
             print("Wait counter " , waitCounter)
 
     elif(client.state ==9):#moving to human with ice.
-        print("moving to human")
+        #print("moving to human")
         gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
         faces = face_cascade.detectMultiScale(gray, 1.5, 2) #1.3 , 3 has fewer
         canvas = numpy.zeros((OGHeight -1,OGWidth -1,3,),dtype=numpy.uint8) #canvas to draw rectangles on
@@ -418,7 +450,7 @@ for frame in camera.capture_continuous(rawCapture, format="bgr", use_video_port=
             client.state = 3
             cv2.destroyAllWindows()
         else:
-            client.movement(cogW,bufferLeft, bufferRight)
+            client.movement(cogW ,bufferLeft, bufferRight)
     else:
         print(" phase error")
 
