@@ -27,21 +27,20 @@ class ClientSocket(threading.Thread):
     HEADTILT = 4
     HEADTURN = 3
     SHOULDERVER = 6
-    SHOULDERHOZ = 7
+    #SHOULDERHOZ = 7
     ELBOW = 8
-    WRIST = 10
+    WRIST = 7
     HAND = 11
     maxRight = 1510 
     maxLeft = 7900
     currentScanDirection = 0 #start off scanning left
-    currentHeadTurn = 6000 #initially centered
-    currentHeadTilt = 500
     previousState = 0
     previousPivot = 0
     previousCenterBody = ""
     headDown = False
+    headCenter = False
 
-    state =  2 #intial state is 0 for finding a face, state 1 is navigating to the approperate distance, state 2 is when the wheels no longer need to move but the head needs to move
+    state =  0 # --- intial state is 0 for finding a face, state 1 is navigating to the approperate distance, state 2 is when the wheels no longer need to move but the head needs to move
 
     def __init__(self, IP, PORT):
         super(ClientSocket, self).__init__()
@@ -68,6 +67,7 @@ class ClientSocket(threading.Thread):
         self.s.send(sendingString.encode('UTF-8'))
         print ('done sending')
 
+
     def run(self):
         global globalVar
         while self.alive.isSet():
@@ -92,15 +92,13 @@ class ClientSocket(threading.Thread):
         self.headTilt = 5000
         self.motors = 6000
         self.turn = 6000
-        self.shoulderhoz = 6000
-        self.hand = 1000
+        self.hand = 6000
         self.wrist = 5200
-        self.elbow = 2000
+        self.elbow = 6000
         self.tango.setTarget(self.ELBOW, self.elbow)
         self.tango.setTarget(self.WRIST, self.wrist)
         self.tango.setTarget(self.HAND, self.hand)
         self.tango.setTarget(self.TURN, self.turn)
-        self.tango.setTarget(self.SHOULDERHOZ, self.shoulderhoz)
         self.tango.setTarget(self.MOTORS, self.motors) 
         self.tango.setTarget(self.HEADTILT, self.headTilt)
         self.tango.setTarget(self.BODY, self.body)
@@ -112,9 +110,9 @@ class ClientSocket(threading.Thread):
         self.headDown = False
         #re-center body and turn off motors
         self.motors = 6000
-        #self.headTilt = 5000
         self.turn = 6000
-        #re-center head
+        self.body =6000
+        self.tango.setTarget(self.BODY, self.body)
         self.tango.setTarget(self.MOTORS, self.motors)
         #self.tango.setTarget(self.HEADTILT, self.headTilt)
         self.tango.setTarget(self.TURN, self.turn)
@@ -128,16 +126,17 @@ class ClientSocket(threading.Thread):
     def onClick(self,event, x, y, flags, param):
         if event == cv2.EVENT_LBUTTONDOWN:
             # print out color values for current click x,y coords (to help figure out color thresholds)
-            print(hsv[y, x])  
+            print(hsv[y, x])
+            print("onclicl")
 
     def closeHand(self):
         print("closing hand")
-        self.hand = 7500
+        self.hand = 2000
         self.tango.setTarget(self.HAND, self.hand)
 
     def openHand(self):
         print("Opening hand")
-        self.hand = 1000
+        self.hand = 7000
         self.tango.setTarget(self.HAND, self.hand)
 
     def moveForward(self):
@@ -149,26 +148,32 @@ class ClientSocket(threading.Thread):
 
     # at the start of grabbing for ice.
     def raiseElbow(self):
-        self.elbow = 7000
+        self.elbow = 6000
+        self.SHOULDERVER = 7000
+        self.tango.setTarget(self.ELBOW, self.elbow)
         self.tango.setTarget(self.ELBOW, self.elbow)
 
     #raise head (used for human face detection)
     def raiseHead(self):
         if(self.headDown != True):
-            self.headTilt = 7000
+            self.headTilt = 7500 #7000
             self.tango.setTarget(self.HEADTILT, self.headTilt)
             headDown = True
+    def centerHead(self):
+        if(self.headCenter != True):
+            self.headTilt = 5000
+            self.tango.setTarget(self.HEADTILT, self.headTilt)
+            headCenter = True
 
     def lowerHead(self):
-        self.headTilt = 5000
+        self.headTilt = 3000
         self.tango.setTarget(self.HEADTILT, self.headTilt)
 
     #pivot left for scanning
     def pivotLeft(self):
-        if(self.previousPivot == 0):
-            self.previousPivot =1
-            self.turn = 7000
-            self.tango.setTarget(self.TURN, self.turn)
+        self.previousPivot =1
+        self.turn = 7000
+        self.tango.setTarget(self.TURN, self.turn)
 
     #robot movement for approaching human
     def movement(self,cogW,xBufferMin, xBufferMax):
@@ -214,7 +219,7 @@ class ClientSocket(threading.Thread):
 print("program start")
 globalVar = ""
 
-IP = '10.200.54.140' #phone IP
+IP = '10.200.47.149' #phone IP
 PORT = 5010
 client = ClientSocket(IP, PORT)
 
@@ -242,12 +247,13 @@ bufferBottom = 300 #320
 loseCount = 0  
 elbowStatus = 0 # initially straight arm
 state10Count = 0
-state10CountMax = 30
+state10CountMax = 10 #dropping into box state
 state10PivotCount = 0
 state10PivotCountMax = 8
 state0Count = 0
-state0CountMax = 20 #moving to first line counter
+state0CountMax = 5 #moving to first line counter
 state0Seeline = False
+state8Delay = 0
 
 colorGoal = "pink" #current run color *CHANGEME*
 
@@ -262,19 +268,23 @@ blueFilterMax = numpy.array([145,48,255])
 
 #orange values are good
 orangeFilterMin = numpy.array([5,50,120]) 
-orangeFilterMax = numpy.array([25,110,255]) 
+orangeFilterMax = numpy.array([25,180,255])  
 
 #pink filters 
 pinkFilterMin = numpy.array([150,50,230])
 pinkFilterMax = numpy.array([170,140,255])
 
 #green filters 
-greenFilterMin = numpy.array([45,140,190])
-greenFilterMax = numpy.array([55,175,255])
+greenFilterMin = numpy.array([40,190,120]) 
+greenFilterMax = numpy.array([63,240,255])
 
-#yellow filters 
-yellowFilterMin = numpy.array([25,105,190])
-yellowFilterMax = numpy.array([40,145,240])
+#yellow filters inside test room
+yellowFilterMin = numpy.array([25,140,175])
+yellowFilterMax = numpy.array([60,215,240])
+
+# #yellow filters for hallway
+# yellowFilterMin = numpy.array([25,150,150])
+# yellowFilterMax = numpy.array([40,200,190])
 
 
 # main program
@@ -288,21 +298,24 @@ for frame in camera.capture_continuous(rawCapture, format="bgr", use_video_port=
     image = frame.array
     #cv2.imshow("og", image)
 
-    
-
-    if(client.state == 0): #scan for blue line
+    if(client.state ==0): #scan for blue line
         image = cv2.GaussianBlur(image, (5, 5), 0)
         hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV) 
+        cv2.setMouseCallback('hsv', client.onClick)
+        cv2.imshow("hsv 0 ", hsv)
+
+
         #cv2.imshow("hsv", hsv)
 
         #mask = cv2.inRange(hsv, blueFilterMin, blueFilterMax)
-        mask = cv2.inRange(hsv, pinkFilterMin, pinkFilterMax)
+        #mask = cv2.inRange(hsv, orangeFilterMin, orangeFilterMax)
+        mask = cv2.inRange(hsv, yellowFilterMin, yellowFilterMax)
         #erode and dialate to reduce white noise
         kernel = numpy.ones((5, 5), numpy.uint8)
         #erode
-        mask = cv2.erode(mask,kernel,iterations = 1)
+        #mask = cv2.erode(mask,kernel,iterations = 1)
         #dialate
-        mask = cv2.dilate(mask,kernel,iterations = 3)
+        #mask = cv2.dilate(mask,kernel,iterations = 3)
         #cv2.setMouseCallback('hsv', client.onClick)
         cv2.imshow("state 0 mask", mask)
 
@@ -317,47 +330,47 @@ for frame in camera.capture_continuous(rawCapture, format="bgr", use_video_port=
         contours, hierarchy = cv2.findContours(mask, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
         cv2.drawContours(mask, contours, -1, (0,255,0), 3)
 
-        if(state0Seeline != True):
-            client.moveForward()
-            #cv2.circle(mask, (cogH, cogW), 5, (100, 100, 100), -1)
-            #print(len(contours))
-            #find extreame contours to determine COG 
-            try:
-                c = max(contours, key=cv2.contourArea)
-                #min = min(contours, key=cv2.contourArea)
-                #print("COGW " , min , " " , max)
+        # if(state0Seeline != True):
+        #     client.lowerHead()
+        #     client.moveForward()
+        #     #cv2.circle(mask, (cogH, cogW), 5, (100, 100, 100), -1)
+        #     #print(len(contours))
+        #     #find extreame contours to determine COG 
+        #     try:
+        #         c = max(contours, key=cv2.contourArea)
+        #         #min = min(contours, key=cv2.contourArea)
+        #         #print("COGW " , min , " " , max)
 
-                # determine the most extreme points along the contour
-                extLeft = tuple(c[c[:, :, 0].argmin()][0])
-                extRight = tuple(c[c[:, :, 0].argmax()][0])
-                extTop = tuple(c[c[:, :, 1].argmin()][0])
-                extBot = tuple(c[c[:, :, 1].argmax()][0])
-                cogH = (extTop[1] + extBot[1]) / 2
-            except:
-                emptyState0 = True
-            print(cogH)
-            if(cogH >= 400):
-                state0Seeline = True
+        #         # determine the most extreme points along the contour
+        #         extLeft = tuple(c[c[:, :, 0].argmin()][0])
+        #         extRight = tuple(c[c[:, :, 0].argmax()][0])
+        #         extTop = tuple(c[c[:, :, 1].argmin()][0])
+        #         extBot = tuple(c[c[:, :, 1].argmax()][0])
+        #         cogH = (extTop[1] + extBot[1]) / 2
+        #     except:
+        #         emptyState0 = True
+        #     if(cogH >= 400):
+        #         state0Seeline = True
+        # else:
+        #     print(state0Count)
+        #     if(state0Count <= state0CountMax):
+        #         #move forward
+        #         client.moveForward()
+        #         state0Count = state0Count + 1
+        #     else:
+        #         client.resetMotors()
+        #         cv2.destroyAllWindows()
+        #         #move to next state
+        #         client.sendData("entered digging zone")
+        #         client.state = 2
             
-        else:
-            print(state0Count)
-            if(state0Count <= state0CountMax):
-                #move forward
-                client.moveForward()
-                state0Count = state0Count + 1
-            else:
-                client.resetMotors()
-                #move to next state
-                client.state = 2
-            
-
-
 
     elif(client.state ==2): #finding human (scan only)
         print("finding human")
         client.raiseHead()
         gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
         faces = face_cascade.detectMultiScale(gray, 1.5, 2) #1.3 , 3 has fewer
+
 
         if(faces != ()):
             #navigate to human move to state 9
@@ -368,10 +381,11 @@ for frame in camera.capture_continuous(rawCapture, format="bgr", use_video_port=
             client.pivotLeft()
 
     elif(client.state ==3): #grabbing ice
-        print("grabbing ice")
+        client.lowerHead()
+        #print("grabbing ice")
         #raise elbow if havent yet
         if(elbowStatus == 0):
-            client.raiseElbow()
+            #client.raiseElbow()
             elbowStatus == 1
         #get all of the masks 
         hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
@@ -384,6 +398,8 @@ for frame in camera.capture_continuous(rawCapture, format="bgr", use_video_port=
         else:
             print("color goal errer in state 3")
         cv2.imshow("mask", mask)
+        #cv2.imshow("hsv", hsv)
+        #cv2.setMouseCallback('hsv', client.onClick)
 
         if(numpy.sum(mask == 255) > 10):
             print("correct ice detected")
@@ -392,14 +408,57 @@ for frame in camera.capture_continuous(rawCapture, format="bgr", use_video_port=
             client.state = 8
 
     elif(client.state ==4): #scan room for goal.
-        print("in state 4")
+        client.centerHead()
         hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV) 
-        cv2.imshow("hsv", hsv)
-        cv2.setMouseCallback('hsv', client.onClick)
-        maskO = cv2.inRange(hsv, orangeFilterMin, orangeFilterMax)
-        cv2.imshow("orange mask", maskO)
+        #cv2.setMouseCallback('hsv', client.onClick)
 
-    elif(client.state ==6): 
+        if(colorGoal == "yellow"):
+            mask = cv2.inRange(hsv, yellowFilterMin, yellowFilterMax)
+        elif(colorGoal =="green"):
+            mask = cv2.inRange(hsv, greenFilterMin, greenFilterMax)
+        elif(colorGoal =="pink"):
+            mask = cv2.inRange(hsv, pinkFilterMin, pinkFilterMax)
+        else:
+            print("color goal errer in state 4")
+
+        cv2.imshow("4 mask", mask)
+        cv2.imshow("hsv 4", hsv)
+
+
+        h = OGHeight
+        w = OGWidth
+        wTotal = 0 
+        hTotal = 0
+        totalCounted = 0
+        emptyState4 = False
+
+        contours, hierarchy = cv2.findContours(mask, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+        cv2.drawContours(mask, contours, -1, (0,255,0), 3)
+        try:
+            c = max(contours, key=cv2.contourArea)
+            
+
+            # determine the most extreme points along the contour
+            extLeft = tuple(c[c[:, :, 0].argmin()][0])
+            extRight = tuple(c[c[:, :, 0].argmax()][0])
+            extTop = tuple(c[c[:, :, 1].argmin()][0])
+            extBot = tuple(c[c[:, :, 1].argmax()][0])
+
+            cogW = (extRight[0] +  extLeft[0]) / 2
+            cogH = (extTop[1] + extBot[1]) / 2
+        except:
+            emptyState4 = True
+
+        if(emptyState4):
+            #keep pivoting
+            #print("still scanning in 4")
+            client.pivotLeft()
+        else:
+            #stop moving and proceed to state 6
+            client.state = 6
+            client.resetMotors()
+
+    elif(client.state ==6):             
         #print("moving for the right goal")
         hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV) 
         #cv2.imshow("hsv", hsv)
@@ -448,6 +507,7 @@ for frame in camera.capture_continuous(rawCapture, format="bgr", use_video_port=
         if(cogH >=420): #close enough to end box
             client.resetMotors()
             client.state = 10 #move to dropping ice phase.
+            client.sendData("entered goal area")
 
         if(empty): #if not found scan
             #scan
@@ -466,7 +526,10 @@ for frame in camera.capture_continuous(rawCapture, format="bgr", use_video_port=
         #wait 3 seconds and close hand
         if(waitCounter >= maxWait):
             client.closeHand()
-            client.state = 4 #find orange line next
+            if(state8Delay >= 10):
+                client.state = 4 #find orange line next
+            else:
+                state8Delay = state8Delay + 1
         else:
             waitCounter = waitCounter + 1
             print("Wait counter " , waitCounter)
@@ -487,6 +550,7 @@ for frame in camera.capture_continuous(rawCapture, format="bgr", use_video_port=
             client.resetMotors()
             client.state = 3
             cv2.destroyAllWindows()
+            client.sendData("please give me ice")
         else:
             client.movement(cogW ,bufferLeft, bufferRight)
     elif(client.state ==10):
@@ -504,6 +568,7 @@ for frame in camera.capture_continuous(rawCapture, format="bgr", use_video_port=
         else:
             client.resetMotors()
             client.openHand()
+            cv2.destroyAllWindows()
             client.state=100 #move onto final /end state
 
 
